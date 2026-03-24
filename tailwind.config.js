@@ -20,8 +20,8 @@ export default {
         page: '#F5F6FA',
         sidebar: '#FFFFFF',
         't-primary': '#1E293B',
-        't-secondary': '#64748B',
-        't-muted': '#94A3B8',
+        't-secondary': '#5A6B80',
+        't-muted': '#6B7FA0',
         't-light': '#CBD5E1',
         border: {
           DEFAULT: '#E2E8F0',
