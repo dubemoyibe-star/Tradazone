@@ -238,9 +238,8 @@ Manual test checklist after edits:
 ## 🤝 Contributing
 
 Contributions, bug reports, and feature suggestions are all welcome!
-For full onboarding and SignUp-specific contributor guidance, see `CONTRIBUTING.md`.
+For full onboarding and SignUp-specific contributor guidance, as well as details on our code of conduct and CI/CD pipeline, please read our [CONTRIBUTING.md](./CONTRIBUTING.md).
 
-Please read our [CONTRIBUTING.md](./CONTRIBUTING.md) for details on our code of conduct, the process for submitting pull requests, and our CI/CD pipeline.
 
 ---
 
