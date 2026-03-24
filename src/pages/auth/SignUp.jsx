@@ -2,13 +2,10 @@ import { useState, useEffect } from 'react';
 import { useNavigate, useSearchParams, Link } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import { dispatchWebhook } from '../../services/webhook';
+import { IS_STAGING, APP_NAME } from '../../config/env';
 import illustration from '../../assets/auth-splash.svg';
 import Logo from '../../components/ui/Logo';
 import ConnectWalletModal from '../../components/ui/ConnectWalletModal';
-
-// Build-time environment identifier injected by Vite from .env.<mode>
-const APP_ENV = import.meta.env.VITE_APP_ENV || 'development';
-const IS_STAGING = APP_ENV === 'staging';
 
 function SignUp() {
     const navigate = useNavigate();
@@ -45,7 +42,7 @@ function SignUp() {
                     data-testid="staging-banner"
                     className="w-full bg-amber-400 text-amber-900 text-xs font-semibold text-center py-1.5 px-4"
                 >
-                    ⚠ STAGING ENVIRONMENT — data here is not real and may be reset at any time
+                    ⚠️ {APP_NAME} — STAGING ENVIRONMENT. Data is not real and may be reset at any time.
                 </div>
             )}
 

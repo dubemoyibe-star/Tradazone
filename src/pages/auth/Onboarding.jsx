@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { ArrowRight, ArrowLeft, Check } from 'lucide-react';
+import { IS_STAGING, APP_NAME } from '../../config/env';
 
 const steps = [
     { title: 'Welcome to Tradazone', description: 'The easiest way to accept crypto payments for your business on Starknet or Stellar.', image: '🚀' },
@@ -23,7 +24,18 @@ function Onboarding() {
     };
 
     return (
-        <div className="min-h-screen bg-page flex items-center justify-center p-6">
+        <div className="min-h-screen bg-page flex flex-col items-center">
+            {/* ── Staging environment banner ── */}
+            {IS_STAGING && (
+                <div
+                    role="banner"
+                    data-testid="staging-banner"
+                    className="w-full bg-amber-400 text-amber-900 text-xs font-semibold text-center py-1.5 px-4"
+                >
+                    ⚠️ {APP_NAME} — STAGING ENVIRONMENT. Data is not real and may be reset at any time.
+                </div>
+            )}
+            <div className="flex flex-1 items-center justify-center w-full p-6">
             <div className="w-full max-w-lg bg-white rounded-2xl shadow-lg p-10 text-center">
                 <div className="flex items-center justify-between mb-10">
                     <div className="flex items-center gap-2">
@@ -63,6 +75,7 @@ function Onboarding() {
                         </button>
                     </div>
                 </div>
+            </div>
             </div>
         </div>
     );

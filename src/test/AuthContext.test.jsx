@@ -1,9 +1,11 @@
 import { describe, it, expect, beforeEach, vi, afterEach } from 'vitest';
 import { renderHook, act } from '@testing-library/react';
 import { AuthProvider, useAuth } from '../context/AuthContext';
+import { STORAGE_PREFIX } from '../config/env';
 
-const SESSION_KEY = 'tradazone_auth';
-const WALLET_KEY = 'tradazone_last_wallet';
+// Keys must match what AuthContext derives from STORAGE_PREFIX
+const SESSION_KEY = `${STORAGE_PREFIX}_auth`;
+const WALLET_KEY  = `${STORAGE_PREFIX}_last_wallet`;
 
 beforeEach(() => localStorage.clear());
 afterEach(() => vi.restoreAllMocks());

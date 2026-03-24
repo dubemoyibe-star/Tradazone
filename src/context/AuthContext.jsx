@@ -23,6 +23,7 @@
  */
 
 import { createContext, useContext, useState } from "react";
+import { STORAGE_PREFIX, SESSION_TTL_MS, ALLOW_MOCK_WALLET } from '../config/env';
 
 const AuthContext = createContext(null);
 
@@ -30,10 +31,8 @@ const AuthContext = createContext(null);
 // Constants
 // ---------------------------------------------------------------------------
 
-const SESSION_KEY = "tradazone_auth";
-const WALLET_KEY  = "tradazone_last_wallet";
-/** @type {number} Session TTL: 7 days in milliseconds */
-const SESSION_TTL_MS = 7 * 24 * 60 * 60 * 1000;
+const SESSION_KEY = `${STORAGE_PREFIX}_auth`;
+const WALLET_KEY  = `${STORAGE_PREFIX}_last_wallet`;
 
 // ---------------------------------------------------------------------------
 // Type definitions
@@ -419,8 +418,10 @@ export function AuthProvider({ children }) {
             }
 
             // ── Dev / demo fallback ─────────────────────────────────────────────
-            // TODO: Remove before production. This mock address allows local
-            // development without a real Starknet wallet installed.
+            // Mock wallet fallback — only permitted outside production
+            if (!ALLOW_MOCK_WALLET) {
+                return { success: false, error: 'not_installed' };
+            }
             const mockAddr = "0x049d36570d4e46f48e99674bd3fcc84644ddd6b96f7c741b1562b82f9e004dc7";
             /** @type {WalletState} */
             const walletState = { address: mockAddr, isConnected: true, chainId: "SN_MAIN", balance: "0", currency: "STRK" };

@@ -1,7 +1,8 @@
 import { useState, useEffect } from 'react';
 import { useNavigate, useSearchParams, Link } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
-import { AlertCircle, ExternalLink } from 'lucide-react';
+import { AlertCircle } from 'lucide-react';
+import { IS_STAGING, APP_NAME } from '../../config/env';
 import illustration from '../../assets/auth-splash.svg';
 import Logo from '../../components/ui/Logo';
 import ConnectWalletModal from '../../components/ui/ConnectWalletModal';
@@ -31,7 +32,18 @@ function SignIn() {
         : null;
 
     return (
-        <div className="min-h-screen flex">
+        <div className="min-h-screen flex flex-col">
+            {/* ── Staging environment banner ── */}
+            {IS_STAGING && (
+                <div
+                    role="banner"
+                    data-testid="staging-banner"
+                    className="w-full bg-amber-400 text-amber-900 text-xs font-semibold text-center py-1.5 px-4"
+                >
+                    ⚠️ {APP_NAME} — STAGING ENVIRONMENT. Data is not real and may be reset at any time.
+                </div>
+            )}
+            <div className="flex flex-1">
             {/* ── Left Panel ── */}
             <div className="w-full lg:w-[40%] flex flex-col justify-start px-6 py-8 lg:px-10 lg:py-10 bg-white overflow-y-auto">
                 {/* Logo */}
@@ -88,6 +100,7 @@ function SignIn() {
                     alt="Tradazone — invoices, payments, crypto"
                     className="absolute inset-0 w-full h-full object-cover"
                 />
+            </div>
             </div>
         </div>
     );
