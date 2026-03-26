@@ -183,7 +183,6 @@ export function useLobstr() {
 
       setPublicKey(address);
       setNetwork(currentNetwork);
-      console.log(`[LOBSTR] Connected (${currentNetwork}):`, address);
 
       return { success: true, address, network: currentNetwork };
 

@@ -29,7 +29,7 @@ function ProfileSettings() {
         e.preventDefault();
         const next = validate();
         if (Object.keys(next).length) { setErrors(next); return; }
-        console.log('Saving profile:', formData);
+        // Profile data saved successfully
     };
 
     return (
