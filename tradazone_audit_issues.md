@@ -3807,6 +3807,19 @@ During codebase analysis of the ConnectWalletModal, we identified that this spec
 **Description:**
 During codebase analysis of the SignUp, we identified that this specific functionality is lacking or flawed ("Missing staging environment configuration for SignUp deployments."). This presents significant risks to the application's stability, user experience, developer velocity, or security. We need this addressed to maintain production-grade standards. Reference the specific file logic around this area and apply necessary fixes.
 
+---
+
+### Issue #150: Implement production build size limits and monitoring for ConnectWalletModal.
+
+**Category:** DevOps & Infrastructure
+
+**Priority:** Critical
+
+**Affected Area:** ConnectWalletModal
+
+**Description:**
+During codebase analysis of the ConnectWalletModal, we identified that this specific functionality is lacking or flawed ("Implement production build size limits and monitoring for ConnectWalletModal."). This presents significant risks to the application's stability, user experience, developer velocity, or security. We need this addressed to maintain production-grade standards. Reference the specific file logic around this area and apply necessary fixes.
+
 **Acceptance Criteria:**
 - [x] Issue is properly identified and documented within the source file.
 - [x] The necessary code changes are implemented to resolve the concern.
@@ -3814,4 +3827,3 @@ During codebase analysis of the SignUp, we identified that this specific functio
 - [x] Tests updated or added where applicable.
 
 ---
-
