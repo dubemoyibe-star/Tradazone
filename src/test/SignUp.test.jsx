@@ -32,14 +32,14 @@ vi.mock('../config/env', () => ({
     get APP_NAME()   { return mockAppName; },
 }));
 
-// ConnectWalletModal — single mock; per-test behavior via `simulateWalletConnect`
-let simulateWalletConnect = (onConnect) => onConnect('0xWALLET', 'evm');
+// ConnectWalletModal: expose onConnect so tests can invoke handleConnectSuccess
+let mockOnConnectArgs = { walletAddress: '0xWALLET', walletType: 'evm' };
 vi.mock('../components/ui/ConnectWalletModal', () => ({
     default: ({ isOpen, onConnect }) =>
         isOpen ? (
             <button
                 data-testid="mock-connect-success"
-                onClick={() => simulateWalletConnect(onConnect)}
+                onClick={() => onConnect(mockOnConnectArgs.walletAddress, mockOnConnectArgs.walletType)}
             >
                 Simulate Connect
             </button>
@@ -61,7 +61,7 @@ beforeEach(() => {
     mockSearchParams = new URLSearchParams();
     mockIsStaging = false;
     mockAppName = 'Tradazone';
-    simulateWalletConnect = (onConnect) => onConnect('0xWALLET', 'evm');
+    mockOnConnectArgs = { walletAddress: '0xWALLET', walletType: 'evm' };
 });
 
 afterEach(() => vi.restoreAllMocks());
@@ -126,8 +126,8 @@ describe('handleConnectSuccess', () => {
     it('falls back to user.walletAddress/walletType when onConnect args are falsy', async () => {
         simulateWalletConnect = (onConnect) => onConnect(null, null);
         mockUser = { isAuthenticated: false, walletAddress: '0xFALLBACK', walletType: 'stellar' };
-        const { default: SignUp } = await import('../pages/auth/SignUp');
-        render(<SignUp />);
+        mockOnConnectArgs = { walletAddress: null, walletType: null };
+        await renderSignUp();
         await userEvent.click(screen.getByText('Connect Wallet'));
         await userEvent.click(screen.getByTestId('mock-connect-success'));
         expect(mockDispatchWebhook).toHaveBeenCalledWith('user.signed_up', {
