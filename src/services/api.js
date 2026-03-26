@@ -4,15 +4,46 @@
 // ADR-001 (API gateway / Fetch stack): documented in docs/adr/001-api-gateway-stack.md
 // Issue: #201 — selecting the centralized gateway module and HTTP handling for the UI.
 
-import { mockCustomers, mockInvoices, mockCheckouts, mockItems } from '../data/mockData';
+import {
+  mockCustomers,
+  mockInvoices,
+  mockCheckouts,
+  mockItems,
+} from "../data/mockData";
 
 // Base URL for the backend API
 // In development, this can be an environment variable or proxy
-const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000/api';
+const API_BASE_URL =
+  import.meta.env.VITE_API_URL || "http://localhost:3000/api";
 
 // Helper to simulate API delay
-const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
+const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
+/**
+ * Slice an array into a single page of results.
+ *
+ * @param {Array}  items
+ * @param {number} page   - 1-based page number. Values < 1 are clamped to 1.
+ * @param {number} limit  - Items per page (default 10).
+ * @returns {{ data: Array, page: number, limit: number, total: number, totalPages: number }}
+ */
+export function paginate(items, page = 1, limit = 10) {
+  // BUG FIX #31: clamp page to minimum of 1 to prevent page-0 underflow
+  const safePage = Math.max(1, Math.floor(page));
+  const safeLimit = Math.max(1, Math.floor(limit));
+  const total = items.length;
+  const totalPages = Math.max(1, Math.ceil(total / safeLimit));
+  //if the requested page exceeds the available pages,clamp to last page
+  const clampedPage = Math.min(safePage, totalPages);
+  const start = (clampedPage - 1) * safeLimit;
+  return {
+    data: items.slice(start, start + safeLimit),
+    page: clampedPage,
+    limit: safeLimit,
+    total,
+    totalPages,
+  };
+}
 // ---------------------------------------------------------------------------
 // 401 / token-expiration interceptor
 // ---------------------------------------------------------------------------
@@ -34,8 +65,8 @@ const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
  * ```
  */
 let _onUnauthorized = () => {
-    const base = (import.meta.env.BASE_URL || '/').replace(/\/$/, '');
-    window.location.assign(`${base}/signin?reason=expired`);
+  const base = (import.meta.env.BASE_URL || "/").replace(/\/$/, "");
+  window.location.assign(`${base}/signin?reason=expired`);
 };
 
 /**
@@ -46,7 +77,7 @@ let _onUnauthorized = () => {
  * @param {() => void} handler
  */
 export function setUnauthorizedHandler(handler) {
-    _onUnauthorized = handler;
+  _onUnauthorized = handler;
 }
 
 /**
@@ -121,6 +152,12 @@ const api = {
             return true;
         }
     },
+    delete: async (id) => {
+      await delay(500);
+      console.log("API Delete Customer:", id);
+      return true;
+    },
+  },
 
     // Invoices
     invoices: {
@@ -137,6 +174,7 @@ const api = {
             return { id: `INV-${Date.now()}`, ...data };
         }
     },
+  },
 
     // Checkouts
     checkouts: {
@@ -149,6 +187,12 @@ const api = {
             return { id: `CHK-${Date.now()}`, ...data };
         }
     },
+    create: async (data) => {
+      await delay(800);
+      console.log("API Create Checkout:", data);
+      return { id: `CHK-${Date.now()}`, ...data };
+    },
+  },
 
     // Items
     items: {
