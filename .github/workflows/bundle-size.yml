@@ -9,6 +9,7 @@ on:
 permissions:
   contents: read
   pull-requests: write
+  issues: write
 
 jobs:
   size-check:
@@ -41,7 +42,10 @@ jobs:
           echo "" >> bundle-report.md
           
           # Run size-limit and capture output for the report
-          npm run size -- --json > size-report.json || true
+          npx size-limit --json > size-report.json || true
+          echo "Raw size-report.json:"
+          cat size-report.json
+
           
           echo "### Individual Chunk Sizes" >> bundle-report.md
           echo "| Chunk Name | Size (gzip) | Limit | Status |" >> bundle-report.md
