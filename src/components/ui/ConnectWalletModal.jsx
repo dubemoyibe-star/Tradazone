@@ -75,6 +75,72 @@ const WALLET_LIST_MAX_HEIGHT = 340;   // px — ~4 rows visible; remainder scrol
  */
 
 // ---------------------------------------------------------------------------
+// Error handling utilities
+// ---------------------------------------------------------------------------
+
+/**
+ * Safely extracts a user-friendly error message from wallet connection errors
+ * @param {string} errorMessage - Raw error message from wallet connection
+ * @returns {string} User-friendly error message
+ */
+function getSafeErrorMessage(errorMessage) {
+    if (!errorMessage || typeof errorMessage !== 'string') {
+        return 'Connection failed';
+    }
+    
+    const message = errorMessage.toLowerCase();
+    
+    if (message.includes('user rejected') || message.includes('user denied')) {
+        return 'Connection was cancelled';
+    }
+    if (message.includes('not installed') || message.includes('not found')) {
+        return 'Wallet not installed';
+    }
+    if (message.includes('locked') || message.includes('unlock')) {
+        return 'Wallet is locked';
+    }
+    if (message.includes('network') || message.includes('chain')) {
+        return 'Network connection issue';
+    }
+    if (message.includes('timeout')) {
+        return 'Connection timed out';
+    }
+    
+    return 'Connection failed';
+}
+
+/**
+ * Provides additional context or troubleshooting steps for wallet errors
+ * @param {string} errorMessage - Raw error message from wallet connection
+ * @returns {string} Additional error description or troubleshooting tip
+ */
+function getSafeErrorDescription(errorMessage) {
+    if (!errorMessage || typeof errorMessage !== 'string') {
+        return 'Please try again or contact support if the issue persists.';
+    }
+    
+    const message = errorMessage.toLowerCase();
+    
+    if (message.includes('user rejected') || message.includes('user denied')) {
+        return 'You cancelled the connection request. Click Connect again to retry.';
+    }
+    if (message.includes('not installed') || message.includes('not found')) {
+        return 'Please install the wallet extension and refresh the page.';
+    }
+    if (message.includes('locked') || message.includes('unlock')) {
+        return 'Please unlock your wallet and try connecting again.';
+    }
+    if (message.includes('network') || message.includes('chain')) {
+        return 'Check your internet connection and wallet network settings.';
+    }
+    if (message.includes('timeout')) {
+        return 'The connection took too long. Please try again.';
+    }
+    
+    return 'Please try again or contact support if the issue persists.';
+}
+
+// ---------------------------------------------------------------------------
 // Internal icon components
 // ---------------------------------------------------------------------------
 
