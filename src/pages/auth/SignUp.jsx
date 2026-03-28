@@ -53,6 +53,15 @@ import ConnectWalletModal from '../../components/ui/ConnectWalletModal';
  * AuthProvider invalidated the entire SignUp route on every catalog change.
  * The page now consumes narrow auth hooks so unrelated provider updates do not
  * force a full SignUp re-render.
+ *
+ * ISSUE: #129
+ * Category: Feature Enhancement
+ * Affected Area: SignUp
+ * Description:
+ * SignUp lacked an "Export to CSV" action, preventing users from exporting
+ * their current connection snapshot. This adds a lightweight CSV export
+ * button to align with SignIn and improve data portability.
+ * Tests: src/test/SignUp.test.jsx
  */
 /**
  * SignUp page component - entry point for new users to connect their wallet.
@@ -106,6 +115,24 @@ function SignUp() {
         navigate(redirectTo, { replace: true });
     };
 
+    const handleExportToCSV = () => {
+        const isAuthenticated = user?.isAuthenticated ?? false;
+        const status = isAuthenticated ? 'Connected' : 'Disconnected';
+        const walletAddress = user?.walletAddress || 'None';
+
+        const csvContent =
+            'data:text/csv;charset=utf-8,' +
+            'Wallet Address,Status\n' +
+            `${walletAddress},${status}\n`;
+        const encodedUri = encodeURI(csvContent);
+        const link = document.createElement('a');
+        link.setAttribute('href', encodedUri);
+        link.setAttribute('download', 'signup_snapshot.csv');
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+    };
+
     return (
         <div className="min-h-screen flex flex-col">
             {/* ── Staging environment banner ── */}
@@ -141,6 +168,12 @@ function SignUp() {
                     className="w-full inline-flex items-center justify-center gap-2 px-4 py-2.5 h-10 bg-brand text-white text-sm font-semibold hover:opacity-90 active:scale-95 transition-all mb-6 rounded-lg"
                 >
                     Connect Wallet
+                </button>
+                <button
+                    onClick={handleExportToCSV}
+                    className="w-full inline-flex items-center justify-center gap-2 px-4 py-2.5 h-10 bg-gray-100 text-gray-700 text-sm font-semibold hover:bg-gray-200 active:scale-95 transition-all mb-6 rounded-lg"
+                >
+                    Export to CSV
                 </button>
 
                 <ConnectWalletModal 

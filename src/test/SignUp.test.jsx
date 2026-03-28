@@ -108,6 +108,34 @@ describe('SignUp', () => {
         expect(mockNavigate).toHaveBeenCalledWith('/', { replace: true });
     });
 
+    it('exports a csv snapshot of the current signup state', async () => {
+        const user = userEvent.setup();
+        const clickSpy = vi.fn();
+        const setAttributeSpy = vi.fn();
+
+        const createElementSpy = vi.spyOn(document, 'createElement').mockImplementation(() => {
+            return {
+                setAttribute: setAttributeSpy,
+                click: clickSpy,
+            };
+        });
+
+        const appendSpy = vi.spyOn(document.body, 'appendChild').mockImplementation(() => {});
+        const removeSpy = vi.spyOn(document.body, 'removeChild').mockImplementation(() => {});
+
+        mockUser = { isAuthenticated: false, walletAddress: null, walletType: null };
+
+        await renderSignUp();
+        await user.click(screen.getByRole('button', { name: /export to csv/i }));
+
+        expect(setAttributeSpy).toHaveBeenCalledWith('download', 'signup_snapshot.csv');
+        expect(clickSpy).toHaveBeenCalled();
+
+        createElementSpy.mockRestore();
+        appendSpy.mockRestore();
+        removeSpy.mockRestore();
+    });
+
     it('falls back to the auth user wallet metadata when modal data is missing', async () => {
         const user = userEvent.setup();
         mockUser = { isAuthenticated: false, walletAddress: '0xFALLBACK', walletType: 'stellar' };
