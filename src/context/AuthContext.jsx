@@ -20,6 +20,14 @@
  * This context is large due to multi-wallet support; size limits and monitoring
  * are enforced in vite.config.js and CI to prevent bundle bloat.
  *
+ * ISSUE #69: Excessive context API updates in SignIn caused unnecessary re-renders when the
+ * full `user` object updated (e.g. profile fields) while `isAuthenticated` stayed the same.
+ * Resolution: `AuthSessionContext` exposes only `user.isAuthenticated` (a boolean primitive).
+ * React skips re-rendering consumers when the value is unchanged (`true === true`), so SignIn
+ * can subscribe via {@link useAuthIsAuthenticated} instead of {@link useAuthUser} for
+ * redirect/export logic. Initial profile seeding on SignIn uses {@link loadSession} to avoid
+ * subscribing to the full user object for one-time draft hydration.
+ *
  * ISSUE #71: Excessive context API updates in Auth module cause full application re-renders
  * Category: Performance & Scalability
  * Priority: Critical
@@ -112,6 +120,8 @@ import { normalizeRichTextHtml } from '../utils/richText';
 
 const AuthContext = createContext(null);
 const AuthUserContext = createContext(null);
+/** @type {import('react').Context<boolean | null>} Boolean session flag only — avoids re-renders on unrelated user field updates (Issue #69). */
+const AuthSessionContext = createContext(null);
 const AuthActionsContext = createContext(null);
 const AuthWalletStateContext = createContext(null);
 const AuthWalletCatalogContext = createContext(null);
@@ -1054,13 +1064,15 @@ export function AuthProvider({ children }) {
     return (
         <AuthContext.Provider value={authContextValue}>
             <AuthUserContext.Provider value={user}>
-                <AuthActionsContext.Provider value={authActionsValue}>
-                    <AuthWalletStateContext.Provider value={authWalletStateValue}>
-                        <AuthWalletCatalogContext.Provider value={authWalletCatalogValue}>
-                            {children}
-                        </AuthWalletCatalogContext.Provider>
-                    </AuthWalletStateContext.Provider>
-                </AuthActionsContext.Provider>
+                <AuthSessionContext.Provider value={user.isAuthenticated}>
+                    <AuthActionsContext.Provider value={authActionsValue}>
+                        <AuthWalletStateContext.Provider value={authWalletStateValue}>
+                            <AuthWalletCatalogContext.Provider value={authWalletCatalogValue}>
+                                {children}
+                            </AuthWalletCatalogContext.Provider>
+                        </AuthWalletStateContext.Provider>
+                    </AuthActionsContext.Provider>
+                </AuthSessionContext.Provider>
             </AuthUserContext.Provider>
         </AuthContext.Provider>
     );
@@ -1103,6 +1115,22 @@ export function useAuth() {
 export function useAuthUser() {
     const context = useContext(AuthUserContext);
     if (context === null) throw new Error("useAuthUser must be used within an AuthProvider");
+    return context;
+}
+
+/**
+ * Returns whether the user is authenticated — **boolean only** (Issue #69).
+ *
+ * Unlike {@link useAuthUser}, this does not subscribe to the full user object. When
+ * `isAuthenticated` is unchanged, context consumers do not re-render (primitive `true`/`false`
+ * identity), which keeps public routes like SignIn from re-rendering on profile-only updates.
+ *
+ * @returns {boolean}
+ * @throws {Error} If called outside an AuthProvider.
+ */
+export function useAuthIsAuthenticated() {
+    const context = useContext(AuthSessionContext);
+    if (context === null) throw new Error("useAuthIsAuthenticated must be used within an AuthProvider");
     return context;
 }
 

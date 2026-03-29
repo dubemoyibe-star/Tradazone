@@ -1,3 +1,8 @@
+/**
+ * App shell header (rendered inside Layout for protected App routes).
+ *
+ * Issue #38: Icon-only controls need accessible names; `<img>` avatar uses `alt`.
+ */
 import { Bell, Menu } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import Logo from '../ui/Logo';
@@ -22,8 +27,12 @@ function Header({ onMenuToggle }) {
 
             {/* Right: Bell + Avatar */}
             <div className="flex items-center gap-4">
-                <button className="w-9 h-9 rounded-full flex items-center justify-center text-white/80 hover:bg-white/10 transition-colors">
-                    <Bell size={22} />
+                <button
+                    type="button"
+                    className="w-9 h-9 rounded-full flex items-center justify-center text-white/80 hover:bg-white/10 transition-colors"
+                    aria-label="Notifications"
+                >
+                    <Bell size={22} aria-hidden="true" />
                 </button>
                 <div className="w-9 h-9 rounded-full overflow-hidden border-2 border-white/30 flex-shrink-0">
                     <img

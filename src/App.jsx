@@ -8,6 +8,15 @@
  * each feature is fetched on-demand. Chart.js (used within the checkout flow) 
  * is further isolated in its own `charts` Rollup chunk.
  * See: src/components/ui/LazyChart.jsx and vite.config.js for details.
+ *
+ * Issue #38 — Missing accessible names on route loading surfaces (App Routing).
+ * Category: UI/UX / accessibility
+ * Affected: Suspense fallbacks while lazy chunks load (`/pay/:checkoutId`, checkout
+ * routes) and the root Suspense fallback (`LoadingSpinner`).
+ * Resolution: `role="status"`, `aria-live`, `aria-busy`, and explicit labels so
+ * assistive tech users get parity with visual loading states. (Purely decorative
+ * spinners use `aria-hidden`; informative images elsewhere use `alt` — see Logo,
+ * auth illustrations.)
  */
 import { lazy, Suspense } from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
@@ -69,7 +78,17 @@ function App() {
             <Route
               path="/pay/:checkoutId"
               element={
-                <Suspense fallback={<div className="min-h-screen bg-brand" aria-busy="true" aria-label="Loading…" />}>
+                <Suspense
+                  fallback={
+                    <div
+                      className="min-h-screen bg-brand"
+                      role="status"
+                      aria-live="polite"
+                      aria-busy="true"
+                      aria-label="Loading checkout payment page"
+                    />
+                  }
+                >
                   <MailCheckout />
                 </Suspense>
               }
@@ -93,7 +112,18 @@ function App() {
               <Route path="customers/:id" element={<CustomerDetail />} />
               {/* Checkout routes — wrapped in Suspense so the lazy chunks
                   resolve gracefully while the user navigates */}
-              <Suspense fallback={<div className="p-8 text-center text-sm text-gray-400" aria-busy="true">Loading…</div>}>
+              <Suspense
+                fallback={
+                  <div
+                    className="p-8 text-center text-sm text-gray-400"
+                    role="status"
+                    aria-live="polite"
+                    aria-busy="true"
+                  >
+                    Loading…
+                  </div>
+                }
+              >
                 <Route path="checkout" element={<CheckoutList />} />
                 <Route path="checkout/create" element={<CreateCheckout />} />
                 <Route path="checkout/:id" element={<CheckoutDetail />} />
