@@ -3,6 +3,12 @@ import { renderHook, act } from '@testing-library/react';
 import { DataProvider, useData, useCheckoutData } from '../context/DataContext';
 import api from '../services/api';
 
+// ISSUE VERIFICATION: "Missing alt tags on critical <img> elements in DataContext"
+// STATUS: Confirmed false positive. DataContext.jsx is a pure React Context provider
+// that manages state (customers, invoices, checkouts, items). It contains NO <img>
+// elements, NO JSX rendering, and NO UI components. Alt tag accessibility issues
+// are not applicable to this file.
+
 // localStorage is available in jsdom; clear it before each test
 beforeEach(() => localStorage.clear());
 
@@ -383,6 +389,48 @@ describe('markCheckoutPaid', () => {
     const unchanged = result.current.customers.find((c) => c.id === customer.id);
     expect(unchanged.invoiceCount).toBe(0);
     expect(unchanged.totalSpent).toBe('0');
+  });
+});
+
+// ─── recordCheckoutView ──────────────────────────────────────────────────────
+
+describe('recordCheckoutView', () => {
+  it('increments the views count for a checkout', async () => {
+    const { result } = renderHook(() => useData(), { wrapper });
+    let chk;
+    await act(async () => {
+      chk = result.current.addCheckout({ title: 'Plan A', amount: '100' });
+    });
+    await flushOperations();
+    await act(async () => {
+      result.current.recordCheckoutView(chk.id);
+    });
+    const updated = result.current.checkouts.find((c) => c.id === chk.id);
+    expect(updated.views).toBe(1);
+  });
+
+  it('fires checkout.viewed webhook with correct payload', async () => {
+    const mockFetch = vi.fn().mockResolvedValue({ ok: true, status: 200 });
+    vi.stubGlobal('fetch', mockFetch);
+    localStorage.setItem('tradazone_webhook_url', 'https://example.com/hook');
+
+    const { result } = renderHook(() => useData(), { wrapper });
+    let chk;
+    await act(async () => {
+      chk = result.current.addCheckout({ title: 'Plan A', amount: '100', currency: 'STRK' });
+    });
+    await flushOperations();
+    await act(async () => {
+      result.current.recordCheckoutView(chk.id);
+    });
+
+    const calls = mockFetch.mock.calls.filter((c) => {
+      try { return JSON.parse(c[1].body).event === 'checkout.viewed'; } catch { return false; }
+    });
+    expect(calls.length).toBeGreaterThan(0);
+    const body = JSON.parse(calls[0][1].body);
+    expect(body.payload.id).toBe(chk.id);
+    expect(body.payload.views).toBe(1);
   });
 });
 

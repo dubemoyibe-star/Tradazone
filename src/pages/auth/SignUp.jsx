@@ -1,78 +1,14 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { Download } from "lucide-react";
 import { useAuthActions, useAuthUser } from "../../context/AuthContext";
 import { dispatchWebhook } from "../../services/webhook";
-import { IS_STAGING, APP_NAME } from "../../config/env";
+import { IS_STAGING, APP_NAME, STORAGE_PREFIX } from "../../config/env";
 import illustration from "../../assets/auth-splash.svg";
 import Logo from "../../components/ui/Logo";
 import ConnectWalletModal from "../../components/ui/ConnectWalletModal";
 
-/**
- * SignUp.jsx
- *
- * ISSUE: CI pipeline lacks comprehensive linting job for SignUp
- * Category: DevOps & Infrastructure
- * Affected Area: SignUp
- * Status: RESOLVED âœ“
- *
- * Description:
- * The CI pipeline (deploy.yml) was missing a linting step in the test job.
- * Additionally, SignUp.jsx had an unused import (Link from react-router-dom)
- * that was causing linting errors.
- *
- * Resolution:
- * 1. Removed unused 'Link' import from SignUp.jsx (no longer used in component)
- * 2. Updated .github/workflows/deploy.yml to include 'npm run lint' in the test job
- *    BEFORE running tests (matching staging.yml pattern)
- * 3. Ensured SignUp.jsx passes ESLint with no warnings or errors
- *
- * CI Pipeline Changes:
- * - deploy.yml now runs linting early in the test job
- * - Linting runs on every push to main branch BEFORE building for production
- * - This ensures code quality standards are enforced consistently
- *
- * ISSUE: Implement 'Export to CSV' button on Auth module
- * Category: Feature Enhancement | Priority: Critical | Status: RESOLVED âœ“
- * Affected Files: SignIn.jsx, SignUp.jsx
- * Description: Added CSV export buttons exporting wallet address + auth status.
- * CSV Format: "Wallet Address,Status\n<address>,<status>"
- * Download: Client-side data URI (no server deps).
- * Testing: Manual verification - no regressions.
- *
- * @coverage-note Critical logic in this component:
- *   1. useEffect redirect â€” if `user.isAuthenticated` is true on mount (or
- *      becomes true), the user is immediately redirected to `redirectTo`.
- *      Prevents authenticated users from accessing the sign-up page.
- *   2. handleConnectSuccess â€” called by ConnectWalletModal on a successful
- *      wallet connection. Sets `tradazone_onboarded` to `'false'` in
- *      localStorage (triggers WelcomeModal onboarding), fires the
- *      `user.signed_up` webhook (non-blocking), then navigates to `redirectTo`.
- *   3. Staging banner â€” rendered only when IS_STAGING is true; must carry
- *      role="banner" and data-testid="staging-banner" for a11y and testing.
- *   4. handleExportToCSV â€” exports wallet address + signup status to CSV.
- * Tests: src/test/SignUp.test.jsx
- *
- * ISSUE: #57
- * Category: Performance & Scalability
- * Priority: Critical
- * Affected Area: SignUp
- * Description:
- * SignUp previously subscribed to the monolithic AuthContext just to read
- * `user` and `connectWallet`. That meant wallet discovery updates inside
- * AuthProvider invalidated the entire SignUp route on every catalog change.
- * The page now consumes narrow auth hooks so unrelated provider updates do not
- * force a full SignUp re-render.
- *
- * ISSUE: #129
- * Category: Feature Enhancement
- * Affected Area: SignUp
- * Description:
- * SignUp lacked an "Export to CSV" action, preventing users from exporting
- * their current connection snapshot. This adds a lightweight CSV export
- * button to align with SignIn and improve data portability.
- * Tests: src/test/SignUp.test.jsx
- */
+
 /**
  * SignUp page component - entry point for new users to connect their wallet.
  *
@@ -86,7 +22,7 @@ function SignUp() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const user = useAuthUser();
-  const { connectWallet } = useAuthActions();
+  const { connectWallet, updateProfile } = useAuthActions();
 
   /** @type {boolean} */
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -114,55 +50,59 @@ function SignUp() {
    * @param {string | null} walletAddress - Connected wallet address or null to use fallback
    * @param {string | null} walletType - Wallet type (e.g., 'evm', 'stellar') or null to use fallback
    */
-  const handleConnectSuccess = (walletAddress, walletType) => {
+  const handleConnectSuccess = useCallback((walletAddress, walletType) => {
     // Mark as first-time user so Onboarding/Welcome logic can trigger if needed
     localStorage.setItem("tradazone_onboarded", "false");
+
     // Fire user.signed_up webhook (non-blocking)
     dispatchWebhook("user.signed_up", {
       walletAddress: walletAddress || user.walletAddress,
       walletType: walletType || user.walletType,
     });
     navigate(redirectTo, { replace: true });
-  };
+  }, [navigate, redirectTo, user.walletAddress, user.walletType]);
+
 
   /**
    * Exports current auth state to CSV file.
-   * Downloads auth_data.csv with wallet address and signup status.
+   * Downloads auth_data.csv with wallet address, status, and description draft.
+   * Issue #130: Fixed flawed implementation that missed business description.
    */
   const handleExportToCSV = () => {
     const isAuthenticated = user?.isAuthenticated ?? false;
     const status = isAuthenticated ? "Connected" : "Disconnected";
     const walletAddress = user?.walletAddress || "None";
+    const description = getPlainTextFromRichText(descriptionDraft) || "None";
 
-    const csvContent =
-      "data:text/csv;charset=utf-8," +
-      "Wallet Address,Status\n" +
-      `${walletAddress},${status}\n`;
-    const encodedUri = encodeURI(csvContent);
-    const link = document.createElement("a");
-    link.setAttribute("href", encodedUri);
-    link.setAttribute("download", "auth_data.csv");
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
+    const headers = ["Wallet Address", "Status", "Business Description"];
+    const values = [walletAddress, status, description];
+
+    const csvContent = [
+      headers.map(escapeCsvField).join(","),
+      values.map(escapeCsvField).join(","),
+    ].join("\n");
+
+    const timestamp = new Date().getTime();
+    downloadCsvFile(`tradazone_signup_data_${timestamp}.csv`, csvContent);
   };
+
 
   return (
     <div className="min-h-screen flex flex-col">
-      {/* â”€â”€ Staging environment banner â”€â”€ */}
+      {/* ── Staging environment banner ── */}
       {IS_STAGING && (
         <div
           role="banner"
           data-testid="staging-banner"
           className="w-full bg-amber-400 text-amber-900 text-xs font-semibold text-center py-1.5 px-4"
         >
-          âš ï¸ {APP_NAME} â€” STAGING ENVIRONMENT. Data is not real and may be reset
+          ⚠️ {APP_NAME} — STAGING ENVIRONMENT. Data is not real and may be reset
           at any time.
         </div>
       )}
 
       <div className="flex flex-1">
-        {/* â”€â”€ Left Panel â”€â”€ */}
+        {/* ── Left Panel ── */}
         <div className="w-full lg:w-[40%] flex flex-col justify-start px-6 py-8 lg:px-10 lg:py-10 bg-white overflow-y-auto">
           {/* Logo */}
           <div className="mb-8 lg:mb-12">
@@ -176,6 +116,7 @@ function SignUp() {
           <p className="text-sm text-t-muted mb-8 lg:mb-10">
             Connect your wallet to get started
           </p>
+
 
           {/* Connect Wallet Button */}
           <button
@@ -203,7 +144,7 @@ function SignUp() {
           />
         </div>
 
-        {/* â”€â”€ Right Panel â€” Illustration â”€â”€ */}
+        {/* ── Right Panel — Illustration ── */}
         <div className="hidden lg:block lg:w-[60%] bg-gray-50 relative overflow-hidden">
           <img
             src={illustration}

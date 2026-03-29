@@ -8,6 +8,7 @@ let mockSearchParams;
 let mockUser;
 let mockOnConnectArgs;
 const mockConnectWallet = vi.fn();
+const mockUpdateProfile = vi.fn();
 const mockDispatchWebhook = vi.fn().mockResolvedValue({ ok: true });
 
 vi.mock('react-router-dom', async () => {
@@ -19,6 +20,19 @@ vi.mock('react-router-dom', async () => {
         useSearchParams: () => [mockSearchParams],
     };
 });
+
+vi.mock('../components/forms/RichTextEditor', () => ({
+    default: ({ value, onChange, label }) => (
+        <div data-testid="mock-rte">
+            <label>{label}</label>
+            <textarea
+                data-testid="mock-rte-textarea"
+                value={value}
+                onChange={(e) => onChange(e.target.value)}
+            />
+        </div>
+    ),
+}));
 
 vi.mock('../components/ui/Logo', () => ({
     default: () => React.createElement('div', { 'data-testid': 'logo' }),
@@ -33,12 +47,22 @@ vi.mock('../services/webhook', () => ({
 vi.mock('../config/env', () => ({
     IS_STAGING: false,
     APP_NAME: 'Tradazone',
+    STORAGE_PREFIX: 'tradazone',
 }));
 
 vi.mock('../context/AuthContext', () => ({
-    useAuthActions: () => ({ connectWallet: mockConnectWallet }),
+    useAuthActions: () => ({ connectWallet: mockConnectWallet, updateProfile: mockUpdateProfile }),
     useAuthUser: () => mockUser,
 }));
+
+const mockDownloadCsvFile = vi.fn();
+vi.mock('../utils/checkoutCsv', async () => {
+    const actual = await vi.importActual('../utils/checkoutCsv');
+    return {
+        ...actual,
+        downloadCsvFile: (...args) => mockDownloadCsvFile(...args),
+    };
+});
 
 vi.mock('../components/ui/ConnectWalletModal', () => ({
     default: ({ isOpen, onConnect }) => (
@@ -108,33 +132,30 @@ describe('SignUp', () => {
         expect(mockNavigate).toHaveBeenCalledWith('/', { replace: true });
     });
 
-    it('exports a csv snapshot of the current signup state', async () => {
+    it('exports a csv snapshot of the current signup state via downloadCsvFile', async () => {
         const user = userEvent.setup();
-        const clickSpy = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => {});
-        let appendedLink = null;
-        const realAppendChild = document.body.appendChild.bind(document.body);
-        const realRemoveChild = document.body.removeChild.bind(document.body);
-
-        const appendSpy = vi.spyOn(document.body, 'appendChild').mockImplementation((element) => {
-            appendedLink = element;
-            return realAppendChild(element);
-        });
-        const removeSpy = vi.spyOn(document.body, 'removeChild').mockImplementation((element) => {
-            return realRemoveChild(element);
-        });
-
-        mockUser = { isAuthenticated: false, walletAddress: null, walletType: null };
+        mockUser = { isAuthenticated: true, walletAddress: '0x123', walletType: 'evm' };
 
         await renderSignUp();
+        
+        // Set a description draft
+        const rte = screen.getByTestId('mock-rte-textarea');
+        await user.type(rte, 'Business description with a "quoted" word and a comma,');
+        
         await user.click(screen.getByRole('button', { name: /export signup data to csv/i }));
 
-        expect(appendedLink).toBeTruthy();
-        expect(appendedLink.getAttribute('download')).toBe('auth_data.csv');
-        expect(clickSpy).toHaveBeenCalled();
-
-        appendSpy.mockRestore();
-        removeSpy.mockRestore();
-        clickSpy.mockRestore();
+        expect(mockDownloadCsvFile).toHaveBeenCalled();
+        const [filename, content] = mockDownloadCsvFile.mock.calls[0];
+        
+        expect(filename).toMatch(/^tradazone_signup_data_\d+\.csv$/);
+        
+        // Verify CSV structure and content
+        // Headers: Wallet Address,Status,Business Description
+        // Values: 0x123,Connected,"Business description with a ""quoted"" word and a comma,"
+        
+        expect(content).toContain('Wallet Address,Status,Business Description');
+        expect(content).toContain('0x123,Connected');
+        expect(content).toContain('"Business description with a ""quoted"" word and a comma,"');
     });
 
     it('falls back to the auth user wallet metadata when modal data is missing', async () => {
@@ -150,5 +171,27 @@ describe('SignUp', () => {
             walletAddress: '0xFALLBACK',
             walletType: 'stellar',
         });
+    });
+
+    it('persists a business description draft and syncs it after successful login', async () => {
+        const user = userEvent.setup();
+        await renderSignUp();
+
+        const rte = screen.getByTestId('mock-rte-textarea');
+        await user.type(rte, 'TestDescription');
+
+        // Check localStorage persistence
+        expect(localStorage.getItem('tradazone_signup_description_draft')).toContain('TestDescription');
+
+        // Simulate successful connection
+        await user.click(screen.getByText('Connect Wallet'));
+        await user.click(screen.getByTestId('mock-connect-success'));
+
+        // Verify profile update
+        expect(mockUpdateProfile).toHaveBeenCalledWith({
+            profileDescription: expect.stringContaining('TestDescription')
+        });
+
+        expect(mockNavigate).toHaveBeenCalled();
     });
 });
