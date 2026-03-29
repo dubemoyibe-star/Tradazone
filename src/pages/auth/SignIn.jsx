@@ -27,12 +27,20 @@
  * CSV Format: "Wallet Address,Status\n<address>,<status>"
  * Download: Client-side data URI (no server deps).
  * Testing: Manual verification - no regressions.
+ *
+ * ISSUE #69: Excessive context API updates caused full SignIn re-renders whenever the
+ * monolithic `user` object changed (e.g. profile fields) even when login state did not.
+ * Category: Performance & Scalability
+ * Resolution: Use {@link useAuthIsAuthenticated} for redirect + CSV (boolean-only context).
+ * One-time description draft hydration uses {@link loadSession} instead of subscribing to
+ * the full user snapshot via {@link useAuthUser}.
  */
 import { useCallback, useEffect, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import {
+  loadSession,
   useAuthActions,
-  useAuthUser,
+  useAuthIsAuthenticated,
   useAuthWalletState,
 } from "../../context/AuthContext";
 import { AlertCircle } from "lucide-react";
@@ -78,23 +86,23 @@ function persistDescriptionDraft(value) {
 function SignIn() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
-  const user = useAuthUser();
+  const isAuthenticated = useAuthIsAuthenticated();
   const { connectWallet, updateProfile } = useAuthActions();
   const { lastWallet } = useAuthWalletState();
 
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [descriptionDraft, setDescriptionDraft] = useState(() =>
-    readDescriptionDraft(user?.profileDescription),
+    readDescriptionDraft(loadSession()?.profileDescription ?? ""),
   );
 
   const redirectTo = searchParams.get("redirect") || "/";
   const sessionExpired = searchParams.get("reason") === "expired";
 
   useEffect(() => {
-    if (user?.isAuthenticated) {
+    if (isAuthenticated) {
       navigate(redirectTo, { replace: true });
     }
-  }, [user?.isAuthenticated, navigate, redirectTo]);
+  }, [isAuthenticated, navigate, redirectTo]);
 
   const handleDescriptionChange = useCallback((value) => {
     const normalized = persistDescriptionDraft(value);
@@ -112,7 +120,6 @@ function SignIn() {
   }, [descriptionDraft, navigate, redirectTo, updateProfile]);
 
   const handleExportToCSV = useCallback(() => {
-    const isAuthenticated = user?.isAuthenticated ?? false;
     const status = isAuthenticated ? "Connected" : "Disconnected";
 
     const csvContent =
@@ -126,7 +133,7 @@ function SignIn() {
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
-  }, [lastWallet, user?.isAuthenticated]);
+  }, [lastWallet, isAuthenticated]);
 
   const shortWallet = lastWallet
     ? `${lastWallet.slice(0, 6)}...${lastWallet.slice(-4)}`

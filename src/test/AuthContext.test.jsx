@@ -4,6 +4,7 @@ import {
   AuthProvider,
   useAuth,
   useAuthActions,
+  useAuthIsAuthenticated,
   useAuthUser,
   useAuthWalletCatalog,
 } from '../context/AuthContext';
@@ -222,6 +223,38 @@ describe('useAuthUser', () => {
   it('throws when used outside AuthProvider', () => {
     const spy = vi.spyOn(console, 'error').mockImplementation(() => {});
     expect(() => renderHook(() => useAuthUser())).toThrow('useAuthUser must be used within an AuthProvider');
+    spy.mockRestore();
+  });
+});
+
+describe('useAuthIsAuthenticated (Issue #69)', () => {
+  it('tracks login state without exposing the full user object', () => {
+    const { result } = renderHook(
+      () => ({
+        isAuthed: useAuthIsAuthenticated(),
+        auth: useAuth(),
+      }),
+      { wrapper },
+    );
+
+    expect(result.current.isAuthed).toBe(false);
+
+    act(() => {
+      result.current.auth.login({
+        id: '1',
+        name: 'Test User',
+        email: 'test@example.com',
+      });
+    });
+
+    expect(result.current.isAuthed).toBe(true);
+  });
+
+  it('throws when used outside AuthProvider', () => {
+    const spy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    expect(() => renderHook(() => useAuthIsAuthenticated())).toThrow(
+      'useAuthIsAuthenticated must be used within an AuthProvider',
+    );
     spy.mockRestore();
   });
 });

@@ -5,7 +5,8 @@ import React from "react";
 
 let mockNavigate;
 let mockSearchParams;
-let mockUser;
+let mockIsAuthenticated;
+let mockLoadSession;
 let mockLastWallet;
 const mockConnectWallet = vi.fn();
 const mockUpdateProfile = vi.fn();
@@ -50,11 +51,12 @@ vi.mock("../config/env", () => ({
 }));
 
 vi.mock("../context/AuthContext", () => ({
+  loadSession: () => mockLoadSession,
   useAuthActions: () => ({
     connectWallet: mockConnectWallet,
     updateProfile: mockUpdateProfile,
   }),
-  useAuthUser: () => mockUser,
+  useAuthIsAuthenticated: () => mockIsAuthenticated,
   useAuthWalletState: () => ({
     lastWallet: mockLastWallet,
   }),
@@ -83,7 +85,8 @@ beforeEach(() => {
   localStorage.clear();
   mockNavigate = vi.fn();
   mockSearchParams = new URLSearchParams();
-  mockUser = { isAuthenticated: false, profileDescription: "" };
+  mockIsAuthenticated = false;
+  mockLoadSession = null;
   mockLastWallet = "GABCD123456789";
   mockConnectWallet.mockReset();
   mockUpdateProfile.mockReset();
@@ -139,9 +142,10 @@ describe("SignIn", () => {
 
   it("redirects authenticated users immediately", async () => {
     mockSearchParams = new URLSearchParams("redirect=/dashboard");
-    mockUser = {
-      isAuthenticated: true,
+    mockIsAuthenticated = true;
+    mockLoadSession = {
       profileDescription: "<p>Existing</p>",
+      isAuthenticated: true,
     };
 
     await renderSignIn();
