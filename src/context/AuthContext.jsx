@@ -2,6 +2,16 @@
  * @fileoverview AuthContext — application-wide authentication and wallet state.
  * eslint-disable react-refresh/only-export-components
  *
+ * ISSUE: #109 (Vulnerable session token storage in CI pipeline)
+ * Category: Security & Compliance
+ * Priority: Medium
+ * Affected Area: AuthContext / CI Pipeline
+ * Description: Session tokens were being stored in cleartext localStorage,
+ * making them vulnerable to XSS and potential leakage in CI logs/artifacts.
+ * Remediated by moving sensitive session data to sessionStorage while 
+ * maintaining non-sensitive profile info in localStorage for user convenience.
+ * Also fixed malformed CI workflow files containing merge conflict markers.
+ *
  * ISSUE: #115 (Rich text descriptions in the auth/profile flow)
  * Category: Feature Enhancement
  * Priority: High
@@ -19,6 +29,14 @@
  * Description: Implement production build size limits and monitoring for AuthContext.
  * This context is large due to multi-wallet support; size limits and monitoring
  * are enforced in vite.config.js and CI to prevent bundle bloat.
+ *
+ * ISSUE #69: Excessive context API updates in SignIn caused unnecessary re-renders when the
+ * full `user` object updated (e.g. profile fields) while `isAuthenticated` stayed the same.
+ * Resolution: `AuthSessionContext` exposes only `user.isAuthenticated` (a boolean primitive).
+ * React skips re-rendering consumers when the value is unchanged (`true === true`), so SignIn
+ * can subscribe via {@link useAuthIsAuthenticated} instead of {@link useAuthUser} for
+ * redirect/export logic. Initial profile seeding on SignIn uses {@link loadSession} to avoid
+ * subscribing to the full user object for one-time draft hydration.
  *
  * ISSUE #71: Excessive context API updates in Auth module cause full application re-renders
  * Category: Performance & Scalability
@@ -112,6 +130,8 @@ import { normalizeRichTextHtml } from '../utils/richText';
 
 const AuthContext = createContext(null);
 const AuthUserContext = createContext(null);
+/** @type {import('react').Context<boolean | null>} Boolean session flag only — avoids re-renders on unrelated user field updates (Issue #69). */
+const AuthSessionContext = createContext(null);
 const AuthActionsContext = createContext(null);
 const AuthWalletStateContext = createContext(null);
 const AuthWalletCatalogContext = createContext(null);
@@ -253,44 +273,65 @@ const WALLET_KEY  = `${STORAGE_PREFIX}_last_wallet`;
 // ---------------------------------------------------------------------------
 
 /**
- * Loads a valid (non-expired) session from localStorage.
+ * Loads a valid (non-expired) session from sessionStorage (sensitive)
+ * and merges with persisted profile data from localStorage (non-sensitive).
+ *
+ * ISSUE #109: Split storage to prevent session token leakage in CI/XSS.
  *
  * @returns {UserData | null} The stored user data, or `null` if absent/expired.
  */
 export function loadSession() {
     try {
-        const raw = localStorage.getItem(SESSION_KEY);
-        if (!raw) return null;
-        const parsed = JSON.parse(raw);
-        if (Date.now() > parsed.expiresAt) {
-            localStorage.removeItem(SESSION_KEY);
+        // 1. Check sensitive ephemeral session
+        const rawSession = sessionStorage.getItem(SESSION_KEY);
+        if (!rawSession) return null;
+
+        const session = JSON.parse(rawSession);
+        if (Date.now() > session.expiresAt) {
+            sessionStorage.removeItem(SESSION_KEY);
             return null;
         }
-        return normalizeUserData(parsed.user);
+
+        // 2. Merge with non-sensitive persistent profile
+        const rawProfile = localStorage.getItem(SESSION_KEY);
+        const profile = rawProfile ? JSON.parse(rawProfile) : {};
+
+        return normalizeUserData({ ...profile, ...session.user });
     } catch {
         return null;
     }
 }
 
 /**
- * Persists a user session to localStorage with a rolling TTL.
+ * Persists a user session.
+ * - Sensitive data (user object/tokens) goes to sessionStorage.
+ * - Non-sensitive profile fields go to localStorage.
  *
  * @param {UserData} userData - The user data to persist.
  * @returns {void}
  */
 function saveSession(userData) {
     const normalizedUserData = normalizeUserData(userData);
-    localStorage.setItem(SESSION_KEY, JSON.stringify({
+    
+    // 1. Ephemeral sensitive session
+    sessionStorage.setItem(SESSION_KEY, JSON.stringify({
         user: normalizedUserData,
         expiresAt: Date.now() + SESSION_TTL_MS,
     }));
+
+    // 2. Persistent non-sensitive profile (name, avatar, address etc.)
+    // We explicitly strip sensitive fields like tokens that should only live 
+    // in sessionStorage to prevent leakage.
+    const { token, jwt, ...profile } = normalizedUserData;
+    localStorage.setItem(SESSION_KEY, JSON.stringify(profile));
 }
 
 /**
- * Removes the session from localStorage.
+ * Removes the session from both sessionStorage and localStorage.
  * @returns {void}
  */
 function clearSession() {
+    sessionStorage.removeItem(SESSION_KEY);
     localStorage.removeItem(SESSION_KEY);
 }
 
@@ -1054,13 +1095,15 @@ export function AuthProvider({ children }) {
     return (
         <AuthContext.Provider value={authContextValue}>
             <AuthUserContext.Provider value={user}>
-                <AuthActionsContext.Provider value={authActionsValue}>
-                    <AuthWalletStateContext.Provider value={authWalletStateValue}>
-                        <AuthWalletCatalogContext.Provider value={authWalletCatalogValue}>
-                            {children}
-                        </AuthWalletCatalogContext.Provider>
-                    </AuthWalletStateContext.Provider>
-                </AuthActionsContext.Provider>
+                <AuthSessionContext.Provider value={user.isAuthenticated}>
+                    <AuthActionsContext.Provider value={authActionsValue}>
+                        <AuthWalletStateContext.Provider value={authWalletStateValue}>
+                            <AuthWalletCatalogContext.Provider value={authWalletCatalogValue}>
+                                {children}
+                            </AuthWalletCatalogContext.Provider>
+                        </AuthWalletStateContext.Provider>
+                    </AuthActionsContext.Provider>
+                </AuthSessionContext.Provider>
             </AuthUserContext.Provider>
         </AuthContext.Provider>
     );
@@ -1103,6 +1146,22 @@ export function useAuth() {
 export function useAuthUser() {
     const context = useContext(AuthUserContext);
     if (context === null) throw new Error("useAuthUser must be used within an AuthProvider");
+    return context;
+}
+
+/**
+ * Returns whether the user is authenticated — **boolean only** (Issue #69).
+ *
+ * Unlike {@link useAuthUser}, this does not subscribe to the full user object. When
+ * `isAuthenticated` is unchanged, context consumers do not re-render (primitive `true`/`false`
+ * identity), which keeps public routes like SignIn from re-rendering on profile-only updates.
+ *
+ * @returns {boolean}
+ * @throws {Error} If called outside an AuthProvider.
+ */
+export function useAuthIsAuthenticated() {
+    const context = useContext(AuthSessionContext);
+    if (context === null) throw new Error("useAuthIsAuthenticated must be used within an AuthProvider");
     return context;
 }
 

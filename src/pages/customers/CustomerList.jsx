@@ -10,41 +10,84 @@
  * * ISSUE: #179 (Build size limits for CustomerList)
  * Category: DevOps & Infrastructure
  * Description: Implement production build size limits and monitoring.
+ * ISSUE: #125 (Rich text descriptions for CustomerList)
+ * Category: Feature Enhancement
+ * Description: Added a rich text editor to capture customer descriptions
+ * directly from the list view, with persisted updates in DataContext.
+ *
+ * ISSUE: #77 (N+1 redundant renders due to missing React.memo)
+ * Category: Performance & Scalability
+ * Priority: High
+ * Description: CustomerList re-rendered on every parent update because the
+ * component itself and its derived values (filtered, columns) were not
+ * memoized. Applied React.memo to the component export, useMemo to the
+ * filtered list, and useMemo to the columns definition so DataTable only
+ * re-renders when its inputs actually change.
  */
 
-import { useState } from "react";
+import { useEffect, useState, useMemo, memo } from "react";
 import { useNavigate } from "react-router-dom";
 import { Plus, Search, Users } from "lucide-react";
 import DataTable from "../../components/tables/DataTable";
 import EmptyState from "../../components/ui/EmptyState";
+import RichTextEditor from "../../components/forms/RichTextEditor";
 import { useData } from "../../context/DataContext";
 import { formatUtcDate } from "../../utils/date";
 
-function CustomerList() {
+// #77: wrap with memo so parent re-renders don't propagate into this page
+// when customers and query haven't changed.
+const CustomerList = memo(function CustomerList() {
   const navigate = useNavigate();
-  const { customers } = useData();
+  const { customers, updateCustomerDescription } = useData();
   const [query, setQuery] = useState("");
+  const [selectedCustomerId, setSelectedCustomerId] = useState("");
 
   const safeCustomers = customers ?? [];
 
-  // Local search removed - now handled by DataTable dataType="customers"
+  // #77: memoize filtered list — only recomputes when query or customers change.
+  const filtered = useMemo(
+    () =>
+      query.trim()
+        ? safeCustomers.filter(
+            (c) =>
+              c?.name?.toLowerCase().includes(query.toLowerCase()) ||
+              c?.email?.toLowerCase().includes(query.toLowerCase()),
+          )
+        : safeCustomers,
+    [query, safeCustomers],
+  );
 
-  const columns = [
-    { key: "name", header: "Name" },
-    { key: "email", header: "Email" },
-    { key: "phone", header: "Phone" },
-    {
-      key: "totalSpent",
-      header: "Total Spent",
-      render: (value, row) => `${value ?? "0"} ${row?.currency ?? "STRK"}`,
-    },
-    { key: "invoiceCount", header: "Invoices" },
-    {
-      key: "createdAt",
-      header: "Created",
-      render: (value) => formatUtcDate(value),
-    },
-  ];
+  useEffect(() => {
+    if (!selectedCustomerId && safeCustomers.length > 0) {
+      setSelectedCustomerId(safeCustomers[0].id);
+    }
+  }, [safeCustomers, selectedCustomerId]);
+
+  const selectedCustomer =
+    safeCustomers.find((customer) => customer.id === selectedCustomerId) ||
+    safeCustomers[0];
+
+  // #77: memoize columns — definition is static; recreating it every render
+  // causes DataTable to see new prop references and re-render unnecessarily.
+  const columns = useMemo(
+    () => [
+      { key: "name", header: "Name" },
+      { key: "email", header: "Email" },
+      { key: "phone", header: "Phone" },
+      {
+        key: "totalSpent",
+        header: "Total Spent",
+        render: (value, row) => `${value ?? "0"} ${row?.currency ?? "STRK"}`,
+      },
+      { key: "invoiceCount", header: "Invoices" },
+      {
+        key: "createdAt",
+        header: "Created",
+        render: (value) => formatUtcDate(value),
+      },
+    ],
+    [],
+  );
 
   return (
     <div className="transition-colors duration-200">
@@ -82,6 +125,48 @@ function CustomerList() {
               onChange={(e) => setQuery(e.target.value)}
             />
           </div>
+
+          <div className="mb-6 rounded-xl border border-border bg-white p-4 shadow-sm dark:bg-zinc-900 dark:border-zinc-800">
+            <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+              <div>
+                <h2 className="text-sm font-semibold text-t-primary dark:text-white">
+                  Customer description
+                </h2>
+                <p className="text-xs text-t-muted">
+                  Keep rich notes for proposals, preferences, and onboarding context.
+                </p>
+              </div>
+              <div className="w-full lg:w-64">
+                <label className="text-xs font-medium text-t-secondary uppercase tracking-wide">
+                  Active customer
+                </label>
+                <select
+                  className="mt-2 w-full rounded-lg border border-border bg-white px-3 py-2 text-sm text-t-primary shadow-sm dark:bg-zinc-900 dark:text-zinc-200"
+                  value={selectedCustomerId}
+                  onChange={(event) => setSelectedCustomerId(event.target.value)}
+                >
+                  {safeCustomers.map((customer) => (
+                    <option key={customer.id} value={customer.id}>
+                      {customer.name || customer.email}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </div>
+
+            <div className="mt-4">
+              <RichTextEditor
+                label="Description"
+                value={selectedCustomer?.description || ""}
+                placeholder="Add a rich description for this customer..."
+                onChange={(value) => {
+                  if (selectedCustomer && updateCustomerDescription) {
+                    updateCustomerDescription(selectedCustomer.id, value);
+                  }
+                }}
+              />
+            </div>
+          </div>
           
           <DataTable
             dataType="customers"
@@ -97,6 +182,6 @@ function CustomerList() {
       )}
     </div>
   );
-}
+});
 
 export default CustomerList;

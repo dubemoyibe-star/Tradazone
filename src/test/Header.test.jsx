@@ -33,3 +33,10 @@ describe('Header avatar alt text', () => {
         expect(avatar.getAttribute('alt')).not.toBe('');
     });
 });
+
+describe('Header Issue #38 — icon-only controls', () => {
+    it('exposes an accessible name on the notifications control', () => {
+        render(<Header onMenuToggle={() => {}} />);
+        expect(screen.getByRole('button', { name: 'Notifications' })).toBeInTheDocument();
+    });
+});

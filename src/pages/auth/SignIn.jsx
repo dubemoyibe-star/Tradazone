@@ -1,6 +1,18 @@
 /**
  * @fileoverview SignIn — landing page and wallet connection entry point.
  *
+ * ISSUE: #121 (Rich text descriptions in SignIn)
+ * Category: Feature Enhancement
+ * Priority: Critical
+ * Affected Area: SignIn
+ * Description: SignIn only exposed static marketing copy and the wallet
+ * connection CTA, so merchants had no place to prepare a formatted business
+ * description before starting a session. That created drift between onboarding,
+ * SignIn, and Profile Settings even though AuthContext already persists a
+ * sanitized `profileDescription`. The fix reuses the shared rich text editor,
+ * keeps an unauthenticated draft in localStorage, and syncs the draft into the
+ * auth session after a successful wallet connection.
+ *
  * ISSUE: #174 (Build size limits and monitoring for SignIn)
  * Category: DevOps & Infrastructure
  * Affected Area: SignIn
@@ -15,16 +27,28 @@
  * CSV Format: "Wallet Address,Status\n<address>,<status>"
  * Download: Client-side data URI (no server deps).
  * Testing: Manual verification - no regressions.
+ *
+ * ISSUE #69: Excessive context API updates caused full SignIn re-renders whenever the
+ * monolithic `user` object changed (e.g. profile fields) even when login state did not.
+ * Category: Performance & Scalability
+ * Resolution: Use {@link useAuthIsAuthenticated} for redirect + CSV (boolean-only context).
+ * One-time description draft hydration uses {@link loadSession} instead of subscribing to
+ * the full user snapshot via {@link useAuthUser}.
  */
-import { useState, useEffect } from "react";
-import { useNavigate, useSearchParams, Link } from "react-router-dom";
-import { useAuth } from "../../context/AuthContext";
+import { useCallback, useEffect, useState } from "react";
+import { useNavigate, useSearchParams } from "react-router-dom";
+import {
+  useAuthActions,
+  useAuthIsAuthenticated,
+  useAuthWalletState,
+} from "../../context/AuthContext";
 import { AlertCircle } from "lucide-react";
-import { APP_NAME } from "../../config/env";
+import { STORAGE_PREFIX } from "../../config/env";
 import illustration from "../../assets/auth-splash.svg";
 import Logo from "../../components/ui/Logo";
 import ConnectWalletModal from "../../components/ui/ConnectWalletModal";
 import StagingBanner from "../../components/ui/StagingBanner";
+
 
 /**
  * @fileoverview SignIn page — handles wallet connection and authentication.
@@ -41,7 +65,9 @@ import StagingBanner from "../../components/ui/StagingBanner";
 function SignIn() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
-  const { connectWallet, user, lastWallet } = useAuth();
+  const isAuthenticated = useAuthIsAuthenticated();
+  const { connectWallet, updateProfile } = useAuthActions();
+  const { lastWallet } = useAuthWalletState();
 
   const [isModalOpen, setIsModalOpen] = useState(false);
 
@@ -49,17 +75,17 @@ function SignIn() {
   const sessionExpired = searchParams.get("reason") === "expired";
 
   useEffect(() => {
-    if (user?.isAuthenticated) {
+    if (isAuthenticated) {
       navigate(redirectTo, { replace: true });
     }
-  }, [user?.isAuthenticated, navigate, redirectTo]);
+  }, [isAuthenticated, navigate, redirectTo]);
 
-  const handleConnectSuccess = () => {
+
+  const handleConnectSuccess = useCallback(() => {
     navigate(redirectTo, { replace: true });
-  };
+  }, [navigate, redirectTo]);
 
-  const handleExportToCSV = () => {
-    const isAuthenticated = user?.isAuthenticated ?? false;
+  const handleExportToCSV = useCallback(() => {
     const status = isAuthenticated ? "Connected" : "Disconnected";
 
     const csvContent =
@@ -73,7 +99,7 @@ function SignIn() {
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
-  };
+  }, [lastWallet, isAuthenticated]);
 
   const shortWallet = lastWallet
     ? `${lastWallet.slice(0, 6)}...${lastWallet.slice(-4)}`
@@ -118,6 +144,7 @@ function SignIn() {
               </span>
             </div>
           )}
+
 
           {/* Connect Wallet Button */}
           <button

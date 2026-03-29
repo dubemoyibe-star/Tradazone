@@ -4,6 +4,7 @@ import {
   AuthProvider,
   useAuth,
   useAuthActions,
+  useAuthIsAuthenticated,
   useAuthUser,
   useAuthWalletCatalog,
 } from '../context/AuthContext';
@@ -13,7 +14,23 @@ import { STORAGE_PREFIX } from '../config/env';
 const SESSION_KEY = `${STORAGE_PREFIX}_auth`;
 const WALLET_KEY  = `${STORAGE_PREFIX}_last_wallet`;
 
-beforeEach(() => localStorage.clear());
+function seedSession(userData, expiresAt = Date.now() + 999999) {
+  sessionStorage.setItem(SESSION_KEY, JSON.stringify({ user: userData, expiresAt }));
+  localStorage.setItem(SESSION_KEY, JSON.stringify(userData));
+}
+
+function readStoredSession() {
+  return JSON.parse(sessionStorage.getItem(SESSION_KEY));
+}
+
+function readStoredProfile() {
+  return JSON.parse(localStorage.getItem(SESSION_KEY));
+}
+
+beforeEach(() => {
+  localStorage.clear();
+  sessionStorage.clear();
+});
 afterEach(() => vi.restoreAllMocks());
 
 const wrapper = ({ children }) => <AuthProvider>{children}</AuthProvider>;
@@ -29,7 +46,7 @@ describe('initial state', () => {
 
   it('restores a valid saved session', () => {
     const userData = { id: '1', name: 'Alice', email: 'a@a.com', isAuthenticated: true, walletAddress: null, walletType: null };
-    localStorage.setItem(SESSION_KEY, JSON.stringify({ user: userData, expiresAt: Date.now() + 999999 }));
+    seedSession(userData);
     const { result } = renderHook(() => useAuth(), { wrapper });
     expect(result.current.user.isAuthenticated).toBe(true);
     expect(result.current.user.name).toBe('Alice');
@@ -37,14 +54,14 @@ describe('initial state', () => {
 
   it('ignores an expired session', () => {
     const userData = { id: '1', name: 'Alice', email: 'a@a.com', isAuthenticated: true };
-    localStorage.setItem(SESSION_KEY, JSON.stringify({ user: userData, expiresAt: Date.now() - 1 }));
+    seedSession(userData, Date.now() - 1);
     const { result } = renderHook(() => useAuth(), { wrapper });
     expect(result.current.user.isAuthenticated).toBe(false);
-    expect(localStorage.getItem(SESSION_KEY)).toBeNull();
+    expect(sessionStorage.getItem(SESSION_KEY)).toBeNull();
   });
 
   it('handles corrupt session data gracefully', () => {
-    localStorage.setItem(SESSION_KEY, 'not-valid-json{{');
+    sessionStorage.setItem(SESSION_KEY, 'not-valid-json{{');
     const { result } = renderHook(() => useAuth(), { wrapper });
     expect(result.current.user.isAuthenticated).toBe(false);
   });
@@ -60,9 +77,11 @@ describe('login', () => {
     });
     expect(result.current.user.isAuthenticated).toBe(true);
     expect(result.current.user.name).toBe('Bob');
-    const stored = JSON.parse(localStorage.getItem(SESSION_KEY));
-    expect(stored.user.name).toBe('Bob');
-    expect(stored.expiresAt).toBeGreaterThan(Date.now());
+    const storedSession = readStoredSession();
+    const storedProfile = readStoredProfile();
+    expect(storedSession.user.name).toBe('Bob');
+    expect(storedSession.expiresAt).toBeGreaterThan(Date.now());
+    expect(storedProfile.name).toBe('Bob');
   });
 });
 
@@ -87,18 +106,19 @@ describe('updateProfile', () => {
     expect(result.current.user.company).toBe('Alice Co');
     expect(result.current.user.profileDescription).toBe('<p>Trusted <strong>merchant</strong></p>');
 
-    const stored = JSON.parse(localStorage.getItem(SESSION_KEY));
-    expect(stored.user.profileDescription).toBe('<p>Trusted <strong>merchant</strong></p>');
+    expect(readStoredSession().user.profileDescription).toBe('<p>Trusted <strong>merchant</strong></p>');
+    expect(readStoredProfile().profileDescription).toBe('<p>Trusted <strong>merchant</strong></p>');
   });
 });
 
 describe('logout', () => {
-  it('clears user state and removes session from localStorage', () => {
+  it('clears user state and removes session from storage', () => {
     const { result } = renderHook(() => useAuth(), { wrapper });
     act(() => result.current.login({ id: '1', name: 'Alice', email: 'a@a.com' }));
     act(() => result.current.logout());
     expect(result.current.user.isAuthenticated).toBe(false);
     expect(localStorage.getItem(SESSION_KEY)).toBeNull();
+    expect(sessionStorage.getItem(SESSION_KEY)).toBeNull();
   });
 
   it('resets wallet state on logout', () => {
@@ -139,8 +159,8 @@ describe('completeWalletLogin', () => {
     act(() => result.current.completeWalletLogin('0xabc', 'starknet'));
     expect(result.current.user.isAuthenticated).toBe(true);
     expect(result.current.user.walletAddress).toBe('0xabc');
-    const stored = JSON.parse(localStorage.getItem(SESSION_KEY));
-    expect(stored.user.walletAddress).toBe('0xabc');
+    expect(readStoredSession().user.walletAddress).toBe('0xabc');
+    expect(readStoredProfile().walletAddress).toBe('0xabc');
   });
 
   it('stores last wallet address in localStorage', () => {
@@ -181,6 +201,7 @@ describe('disconnectAll', () => {
     act(() => result.current.completeWalletLogin('GADDR', 'stellar'));
     await act(async () => { await result.current.disconnectAll(); });
     expect(localStorage.getItem(SESSION_KEY)).toBeNull();
+    expect(sessionStorage.getItem(SESSION_KEY)).toBeNull();
   });
 });
 
@@ -222,6 +243,38 @@ describe('useAuthUser', () => {
   it('throws when used outside AuthProvider', () => {
     const spy = vi.spyOn(console, 'error').mockImplementation(() => {});
     expect(() => renderHook(() => useAuthUser())).toThrow('useAuthUser must be used within an AuthProvider');
+    spy.mockRestore();
+  });
+});
+
+describe('useAuthIsAuthenticated (Issue #69)', () => {
+  it('tracks login state without exposing the full user object', () => {
+    const { result } = renderHook(
+      () => ({
+        isAuthed: useAuthIsAuthenticated(),
+        auth: useAuth(),
+      }),
+      { wrapper },
+    );
+
+    expect(result.current.isAuthed).toBe(false);
+
+    act(() => {
+      result.current.auth.login({
+        id: '1',
+        name: 'Test User',
+        email: 'test@example.com',
+      });
+    });
+
+    expect(result.current.isAuthed).toBe(true);
+  });
+
+  it('throws when used outside AuthProvider', () => {
+    const spy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    expect(() => renderHook(() => useAuthIsAuthenticated())).toThrow(
+      'useAuthIsAuthenticated must be used within an AuthProvider',
+    );
     spy.mockRestore();
   });
 });
@@ -318,8 +371,7 @@ describe('race condition prevention', () => {
     expect(result.current.user.name).toBe('User2');
     
     // Session should match current user
-    const stored = JSON.parse(localStorage.getItem(SESSION_KEY));
-    expect(stored.user.id).toBe(result.current.user.id);
+    expect(readStoredSession().user.id).toBe(result.current.user.id);
   });
 
   it('isConnecting flag prevents concurrent connection attempts', () => {
@@ -350,8 +402,7 @@ describe('race condition prevention', () => {
     expect(result.current.user.isAuthenticated).toBe(true);
     expect(result.current.user.id).toBe('3');
     
-    const stored = JSON.parse(localStorage.getItem(SESSION_KEY));
-    expect(stored.user.id).toBe('3');
+    expect(readStoredSession().user.id).toBe('3');
   });
 
   it('maintains wallet and user state consistency during rapid operations', () => {
@@ -370,9 +421,9 @@ describe('race condition prevention', () => {
     expect(result.current.wallet.isConnected).toBe(true);
 
     // Verify session storage consistency
-    const stored = JSON.parse(localStorage.getItem(SESSION_KEY));
-    expect(stored.user.walletAddress).toBe('0xABC123');
-    expect(stored.user.walletType).toBe('starknet');
+    expect(readStoredSession().user.walletAddress).toBe('0xABC123');
+    expect(readStoredSession().user.walletType).toBe('starknet');
+    expect(readStoredProfile().walletAddress).toBe('0xABC123');
     expect(localStorage.getItem(WALLET_KEY)).toBe('0xABC123');
   });
 });

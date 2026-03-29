@@ -10,11 +10,22 @@
  *  - Generic Starknet wallets (Braavos, etc.)
  *  - Generic EVM / browser-injected wallets
  *
+ * ISSUE: #118 (Rich text descriptions in ConnectWalletModal)
+ * Category: Feature Enhancement
+ * Priority: Critical
+ * Affected Area: ConnectWalletModal
+ * Description: Integrated a custom RichTextEditor directly into the wallet
+ * connection flow. This centralizes the "Business Description" draft logic
+ * that was previously duplicated across SignUp and SignIn pages. The modal
+ * now persists an unauthenticated draft in localStorage and automatically
+ * syncs it to the user's profile upon successful connection.
+ *
  * @module ConnectWalletModal
  */
 
-import { useState } from 'react';
+import { useState, useEffect, lazy, Suspense } from 'react';
 import { X, ExternalLink, AlertCircle, ChevronLeft } from 'lucide-react';
+import { useDebounce } from '../../hooks/useDebounce';
 import Logo from './Logo';
 import { useLobstr } from '../../hooks/useLobstr';
 import {
@@ -25,11 +36,16 @@ import {
 import { useVirtualList } from '../../hooks/useVirtualList';
 import { useFocusTrap } from '../../hooks/useFocusTrap';
 import StagingBanner from './StagingBanner';
+const RichTextEditor = lazy(() => import('../forms/RichTextEditor'));
+import { STORAGE_PREFIX } from '../../config/env';
+import { normalizeRichTextHtml } from '../../utils/richText';
 
 // VIRTUALIZATION CONSTANTS
 const VIRTUALIZATION_THRESHOLD = 8;
 const WALLET_ROW_HEIGHT = 88;
 const WALLET_LIST_MAX_HEIGHT = 340;
+
+const DESCRIPTION_DRAFT_KEY = `${STORAGE_PREFIX}_business_description_draft`;
 
 // HELPERS FOR SENSITIVE DATA HIDING (Issue #204)
 function getSafeErrorMessage(msg) {
@@ -40,7 +56,7 @@ function getSafeErrorMessage(msg) {
     return 'The connection was cancelled or failed. Please try again.';
   // msg param used
 
-function getSafeErrorDescription(msg) {
+function getSafeErrorDescription() {
     return 'Your transaction signature was declined or the provider timed out. No sensitive details were leaked.';
 }
 
@@ -105,30 +121,69 @@ function ConnectWalletModal({ isOpen, onClose, onConnect, connectWalletFn }) {
     const [connecting, setConnecting] = useState(null);
     const [error, setError] = useState(null);
     const [filterNetwork, setFilterNetwork] = useState('all');
+
+    /**
+     * Search query for filtering wallets by name.
+     * searchQuery updates immediately (keeps the input responsive);
+     * debouncedSearchQuery delays the filter by 300 ms — #64.
+     */
     const [searchQuery, setSearchQuery] = useState('');
+    const debouncedSearchQuery = useDebounce(searchQuery, 300);
+
     const [view, setView] = useState('primary');
 
-    const { completeWalletLogin, disconnectAll } = useAuthActions();
+    const { completeWalletLogin, disconnectAll, updateProfile } = useAuthActions();
     const { wallet } = useAuthWalletState();
+    const { user } = useAuthUser();
     const { installed, availableWallets } = useAuthWalletCatalog();
     const lobstrHook = useLobstr();
 
+    const [descriptionDraft, setDescriptionDraft] = useState(() => {
+        const saved = localStorage.getItem(DESCRIPTION_DRAFT_KEY) || "";
+        return normalizeRichTextHtml(user?.profileDescription || saved);
+    });
+
     const modalRef = useFocusTrap({ isOpen, onClose, initialFocus: true, restoreFocus: true });
 
-    if (isOpen) {
-        setConnecting(null);
-        setError(null);
-        setView('primary');
-        setSearchQuery('');
-        setFilterNetwork('all');
-    }
+    useEffect(() => {
+        if (isOpen) {
+            setConnecting(null);
+            setError(null);
+            setView('primary');
+            setSearchQuery('');
+            setFilterNetwork('all');
+            
+            // Sync draft with current user description if available
+            if (user?.profileDescription) {
+                setDescriptionDraft(normalizeRichTextHtml(user.profileDescription));
+            }
+        }
+    }, [isOpen, user?.profileDescription]);
 
+    const handleDescriptionChange = (value) => {
+        const normalized = normalizeRichTextHtml(value);
+        setDescriptionDraft(normalized);
+        if (normalized) {
+            localStorage.setItem(DESCRIPTION_DRAFT_KEY, normalized);
+        } else {
+            localStorage.removeItem(DESCRIPTION_DRAFT_KEY);
+        }
+    };
+
+    const syncDescriptionOnConnect = async () => {
+        if (descriptionDraft) {
+            await updateProfile({ profileDescription: descriptionDraft });
+        }
+    };
+
+    // #64: filter uses debouncedSearchQuery so rapid keystrokes don't trigger
+    // a re-render of the wallet list on every character.
     const filteredAndSortedWallets = availableWallets
         .filter(w => {
-            if (searchQuery && !w.name.toLowerCase().includes(searchQuery.toLowerCase())) return false;
+            if (debouncedSearchQuery && !w.name.toLowerCase().includes(debouncedSearchQuery.toLowerCase())) return false;
             if (filterNetwork !== 'all' && w.network !== filterNetwork) return false;
-            if (view === 'primary' && w.isSecondary && !searchQuery && filterNetwork === 'all') return false;
-            if (view === 'secondary' && !w.isSecondary && !searchQuery && filterNetwork === 'all') return false;
+            if (view === 'primary' && w.isSecondary && !debouncedSearchQuery && filterNetwork === 'all') return false;
+            if (view === 'secondary' && !w.isSecondary && !debouncedSearchQuery && filterNetwork === 'all') return false;
             return true;
         })
         .sort((a, b) => {
@@ -170,6 +225,7 @@ function ConnectWalletModal({ isOpen, onClose, onConnect, connectWalletFn }) {
             const result = await lobstrHook.connect();
             if (result?.success) {
                 completeWalletLogin(result.address, 'stellar');
+                await syncDescriptionOnConnect();
                 if (onConnect) onConnect('stellar');
             } else if (result?.error) {
                 setError({ type: 'stellar', code: result.error === 'NOT_INSTALLED' ? 'not_installed' : 'failed', message: result.error });
@@ -185,6 +241,7 @@ function ConnectWalletModal({ isOpen, onClose, onConnect, connectWalletFn }) {
         try {
             const result = await connectWalletFn(type, provider);
             if (result.success) {
+                await syncDescriptionOnConnect();
                 if (onConnect) onConnect(type);
             } else if (result.error === 'not_installed') {
                 setError({ type: w.network, code: 'not_installed' });
@@ -231,6 +288,26 @@ function ConnectWalletModal({ isOpen, onClose, onConnect, connectWalletFn }) {
                             </div>
                         </div>
 
+                        {view === 'primary' && !debouncedSearchQuery && (
+                            <div className="mb-6 animate-fade-in min-h-[200px]">
+                                <Suspense fallback={
+                                    <div className="flex flex-col gap-1.5 animate-pulse">
+                                        <div className="h-4 w-32 bg-gray-200 rounded" />
+                                        <div className="h-36 w-full bg-gray-100 rounded-lg border border-border" />
+                                    </div>
+                                }>
+                                    <RichTextEditor
+                                        id="modal-business-description"
+                                        label="Business description draft"
+                                        value={descriptionDraft}
+                                        onChange={handleDescriptionChange}
+                                        placeholder="Describe your business context before connecting..."
+                                        hint="This description will be synced to your profile after connection."
+                                    />
+                                </Suspense>
+                            </div>
+                        )}
+
                         <div ref={shouldVirtualize ? scrollRef : undefined} data-testid="wallet-list-container" style={shouldVirtualize ? { maxHeight: WALLET_LIST_MAX_HEIGHT, overflowY: 'auto' } : undefined}>
                             {shouldVirtualize && <div style={{ height: topPadding }} aria-hidden="true" />}
                             <div className="flex flex-col gap-3">
@@ -249,10 +326,13 @@ function ConnectWalletModal({ isOpen, onClose, onConnect, connectWalletFn }) {
                             </div>
                             {shouldVirtualize && <div style={{ height: bottomPadding }} aria-hidden="true" />}
                         </div>
+
                         {filteredAndSortedWallets.length === 0 && <div className="text-center py-8 text-t-muted text-sm italic">No wallets found matching your search.</div>}
-                        {view === 'primary' && !searchQuery && filterNetwork === 'all' && (
+
+                        {view === 'primary' && !debouncedSearchQuery && filterNetwork === 'all' && (
                             <button onClick={() => setView('secondary')} disabled={connecting !== null} className="w-full mt-2 text-center text-sm font-semibold text-t-secondary hover:text-brand transition-colors p-3 rounded-lg border border-transparent hover:border-border hover:bg-gray-50 disabled:opacity-50">View more options</button>
                         )}
+
                         {error?.code === 'not_installed' && (
                             <div className="mt-4 p-3 bg-red-50 border border-red-100 rounded-lg flex items-start gap-2 text-sm text-red-800 animate-fade-in">
                                 <AlertCircle size={16} className="flex-shrink-0 mt-0.5 text-red-500" />
@@ -264,6 +344,7 @@ function ConnectWalletModal({ isOpen, onClose, onConnect, connectWalletFn }) {
                                 </div>
                             </div>
                         )}
+
                         {error?.code === 'failed' && (
                             <div className="mt-4 p-3 bg-red-50 border border-red-100 rounded-lg flex items-start gap-2 text-sm text-red-800 animate-fade-in">
                                 <AlertCircle size={16} className="flex-shrink-0 mt-0.5 text-red-500" />
@@ -273,6 +354,7 @@ function ConnectWalletModal({ isOpen, onClose, onConnect, connectWalletFn }) {
                                 </div>
                             </div>
                         )}
+
                         {wallet.isConnected && (
                             <button onClick={async () => { await disconnectAll(); onClose(); }} disabled={connecting !== null} className="mt-5 w-full text-center text-sm font-semibold text-red-500 hover:text-red-700 transition-colors p-3 rounded-lg border border-transparent hover:border-red-100 hover:bg-red-50 disabled:opacity-50">Disconnect all wallets</button>
                         )}

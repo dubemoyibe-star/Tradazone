@@ -7,14 +7,27 @@ import React from 'react';
  * Used as a Suspense fallback in App.jsx to provide visual feedback 
  * during code-splitting chunk retrieval.
  * 
+ * Issue #38: Exposes `role="status"` with `aria-live` and visible status text so
+ * this loading state is announced to assistive technologies (complements `alt`
+ * on routed pages that render images — e.g. Logo, auth illustrations).
+ * 
  * Design matches the micro-spinner in src/components/forms/Button.jsx 
  * but scaled and centered for page-level state.
  */
 function LoadingSpinner() {
     return (
-        <div className="flex items-center justify-center min-h-[400px] w-full p-8" data-testid="app-loading-spinner">
+        <div
+            className="flex items-center justify-center min-h-[400px] w-full p-8"
+            data-testid="app-loading-spinner"
+            role="status"
+            aria-live="polite"
+            aria-busy="true"
+        >
             <div className="flex flex-col items-center gap-4">
-                <span className="w-10 h-10 border-4 border-brand/20 border-t-brand rounded-full animate-spin" />
+                <span
+                    className="w-10 h-10 border-4 border-brand/20 border-t-brand rounded-full animate-spin"
+                    aria-hidden="true"
+                />
                 <p className="text-sm font-medium text-t-muted animate-pulse">Loading Tradazone...</p>
             </div>
         </div>
