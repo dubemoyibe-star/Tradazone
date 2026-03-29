@@ -308,6 +308,9 @@ export function DataProvider({ children }) {
         });
       }
     },
+    [checkouts]
+  );
+
   const recordCheckoutView = useCallback((checkoutId) => {
     const target = checkouts.find(c => c.id === checkoutId);
     if (!target) return;
