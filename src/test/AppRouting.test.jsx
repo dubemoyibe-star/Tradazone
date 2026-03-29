@@ -12,6 +12,7 @@
  *  4. Catch-all — unknown paths redirect to /signin.
  *  5. Lazy loading — Suspense fallback (LoadingSpinner) renders during chunk fetch.
  *  6. Basename — BrowserRouter uses /Tradazone as the basename.
+ *  7. Issue #38 — LoadingSpinner exposes a live `role="status"` region for a11y.
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
@@ -180,5 +181,14 @@ describe('App Routing — Suspense / LoadingSpinner', () => {
         render(<LoadingSpinner />);
         expect(screen.getByTestId('app-loading-spinner')).toBeTruthy();
         expect(screen.getByText('Loading Tradazone...')).toBeTruthy();
+    });
+
+    it('Issue #38: LoadingSpinner is a live status region (route chunk loading a11y)', async () => {
+        const { default: LoadingSpinner } = await import('../components/ui/LoadingSpinner');
+        render(<LoadingSpinner />);
+        const region = screen.getByRole('status');
+        expect(region).toHaveAttribute('aria-live', 'polite');
+        expect(region).toHaveAttribute('aria-busy', 'true');
+        expect(screen.getByText('Loading Tradazone...')).toBeInTheDocument();
     });
 });

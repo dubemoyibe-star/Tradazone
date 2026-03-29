@@ -207,7 +207,7 @@ function SignUp() {
         <div className="hidden lg:block lg:w-[60%] bg-gray-50 relative overflow-hidden">
           <img
             src={illustration}
-            alt="Tradazone â€” invoices, payments, crypto"
+            alt="Tradazone — invoices, payments, crypto"
             className="absolute inset-0 w-full h-full object-cover"
           />
         </div>
